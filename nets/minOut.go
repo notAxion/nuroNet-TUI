@@ -1,4 +1,4 @@
-package main
+package nets
 
 // https://go.dev/play/p/JklhhfM_XMy
 var minOut [10][4]float32 = [10][4]float32{
@@ -13,9 +13,3 @@ var minOut [10][4]float32 = [10][4]float32{
 	{0.99, 0.01, 0.01, 0.01},
 	{0.99, 0.01, 0.01, 0.99},
 }
-
-// minOut = [
-// 	[
-
-// 	]
-// ]
