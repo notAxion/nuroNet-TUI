@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"weights/constants"
 	"weights/input"
 	"weights/nets"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,11 +18,11 @@ import (
 
 var (
 	// margin   = lipgloss.NewStyle().Margin(0, 0, 0, 0)
-	margin = lipgloss.NewStyle().Margin(2, 2)
+	margin = lipgloss.NewStyle().Margin(1, 2, 0, 2)
 	common = lipgloss.NewStyle().
-		Margin(0, 2).
-		MarginTop(4).
-		Align(lipgloss.Center, lipgloss.Center)
+		Margin(4, 2, 0, 0).
+		Align(lipgloss.Center)
+		// MarginTop(5).
 
 	brd = lipgloss.Border{
 		Left: lipgloss.ThickBorder().Left,
@@ -41,6 +44,9 @@ var (
 			BorderForeground(lipgloss.Color("57")).
 		// Margin(4+3, 0, 3).
 		PaddingLeft(2)
+
+	helpStyle = lipgloss.NewStyle().
+			MarginLeft(1).MarginBottom(1)
 )
 
 /*
@@ -90,6 +96,8 @@ type model struct {
 	wsList   list.Model
 	biasList list.Model
 	focus    Focus
+	keys     constants.KeyMap
+	help     help.Model
 }
 
 func newModel() model {
@@ -102,6 +110,8 @@ func newModel() model {
 		net:   *nets.NewNetwork(),
 		input: inp,
 		focus: ws,
+		keys:  constants.Keys,
+		help:  constants.New(),
 	}
 	m.input.Validate = m.ValidateInput
 
@@ -123,13 +133,15 @@ func (m model) View() string {
 	strs = append(strs, m.wsStyle(m.wsList.View()))
 	strs = append(strs, m.biasStyle(m.biasList.View()))
 	strs = append(strs, modelStyle.Render(m.net.ShowChange()))
-	templete := lipgloss.JoinHorizontal(lipgloss.Top, strs...)
+	template := lipgloss.JoinHorizontal(lipgloss.Left, strs...)
+	template = lipgloss.JoinVertical(0, template, helpStyle.Render(m.help.View(m.keys)))
+	// template += "\n" + helpStyle.Render(m.help.View(m.keys))
 	if m.input.Focused() {
 		// templete = margin.Render(templete + "\n" + m.input.View())
-		return margin.Render(templete + "\n" + m.input.View())
+		return margin.Render(template + "\n" + m.input.View())
 	}
 
-	return margin.Render(templete + "\n")
+	return margin.Render(template + "\n")
 	// return templete
 }
 
@@ -168,7 +180,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// modelStyle.Height(msg.Height - modelStyle.GetVerticalFrameSize() - margin.GetVerticalMargins())
 		// vert := modelStyle.GetVerticalFrameSize() + margin.GetVerticalMargins()
 		vert := msg.Height - margin.GetVerticalFrameSize() - modelStyle.GetHeight()
-		modelStyle.Margin(common.GetMarginTop()-1+vert/2, 0, vert/2)
+		modelStyle.Margin(common.GetMarginTop()-3+vert/2, 0, vert/2-1)
 		// modelStyle.Margin(3+vert/2, 0, vert/2)
 
 		// modelStyle.Width(msg.Width/2)
@@ -176,13 +188,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.wsList.SetSize(msg.Width-h, msg.Height-v)
 		h, v = focusStyle.GetFrameSize()
 		m.biasList.SetSize(msg.Width-h, msg.Height-v)
+		m.help.Width = msg.Width
 	case tea.KeyMsg:
 		if m.input.Focused() {
-			switch msg.String() {
-			case "ctrl+c":
+			switch {
+			case key.Matches(msg, m.keys.Quit, m.keys.Back):
 				m.input.SetValue("")
 				m.input.Blur()
-			case "enter":
+			case key.Matches(msg, m.keys.Enter):
 				var value float32
 				if ff, err := strconv.ParseFloat(m.input.Value(), 32); err == nil && m.input.Value() != "" {
 					value = float32(ff)
@@ -197,17 +210,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input.SetValue("")
 				m.input.Blur()
 			}
+			m.input.CursorEnd()
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
 		} else {
+			switch {
+			case key.Matches(msg, m.keys.Help):
+				m.help.ShowAll = !m.help.ShowAll
+			case key.Matches(msg, m.keys.Quit):
+				return m, tea.Quit
+			}
 			switch m.focus {
 			case ws:
-				switch msg.String() {
-				case "ctrl+c", "q":
-					return m, tea.Quit
-				case "tab": //, "h", "j":
+				switch {
+				case key.Matches(msg, m.keys.Tab): //, "h", "j":
 					m.focus = bias
-				case "enter":
+				case key.Matches(msg, m.keys.Enter):
 					value := fmt.Sprint(m.net.WS[m.wsList.Index()])
 					m.input.SetValue(value)
 					m.input.Focus()
@@ -216,12 +234,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, cmd)
 				}
 			case bias:
-				switch msg.String() {
-				case "ctrl+c", "q":
-					return m, tea.Quit
-				case "tab": //, "h", "j":
+				switch {
+				case key.Matches(msg, m.keys.Tab): //, "h", "j":
 					m.focus = ws
-				case "enter":
+				case key.Matches(msg, m.keys.Enter):
 					value := fmt.Sprint(m.net.Bias[m.biasList.Index()])
 					m.input.SetValue(value)
 					m.input.Focus()
