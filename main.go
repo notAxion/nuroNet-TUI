@@ -1,12 +1,46 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"strconv"
+	"weights/input"
 	"weights/nets"
 
-	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	// margin   = lipgloss.NewStyle().Margin(0, 0, 0, 0)
+	margin = lipgloss.NewStyle().Margin(2, 2)
+	common = lipgloss.NewStyle().
+		Margin(0, 2).
+		MarginTop(4).
+		Align(lipgloss.Center, lipgloss.Center)
+
+	brd = lipgloss.Border{
+		Left: lipgloss.ThickBorder().Left,
+	}
+
+	docStyle = common.Copy().
+			Padding(1, 1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("238"))
+
+	focusStyle = common.Copy().
+			Padding(1, 1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("57"))
+
+	modelStyle = common.Copy().
+			Height(14). // just by counting lines
+			Border(brd).
+			BorderForeground(lipgloss.Color("57")).
+		// Margin(4+3, 0, 3).
+		PaddingLeft(2)
 )
 
 /*
@@ -43,39 +77,196 @@ func main() {
 	}
 }
 
+type Focus int
+
+const (
+	ws = iota
+	bias
+)
+
 type model struct {
-	net   nets.Network
-	input textarea.Model
+	net      nets.Network
+	input    textinput.Model
+	wsList   list.Model
+	biasList list.Model
+	focus    Focus
 }
 
 func newModel() model {
+	inp := textinput.New()
+	inp.Prompt = "> "
+	inp.Placeholder = ""
+	inp.Width = 50
+
 	m := model{
 		net:   *nets.NewNetwork(),
-		input: textarea.New(),
+		input: inp,
+		focus: ws,
 	}
+	m.input.Validate = m.ValidateInput
+
+	m.wsList = list.New(input.NewItems(m.net.WS), list.NewDefaultDelegate(), 0, 0)
+	m.wsList.Title = "Wights"
+	m.wsList.SetShowHelp(false)
+	m.biasList = list.New(input.NewItems(m.net.Bias), list.NewDefaultDelegate(), 0, 0)
+	m.biasList.Title = "Bias"
+	m.biasList.SetShowHelp(false)
 	return m
 }
 
 func (m model) Init() tea.Cmd {
-	return textarea.Blink
+	return nil
 }
 
 func (m model) View() string {
-	return lipgloss.JoinHorizontal(lipgloss.Top, m.input.View(), m.net.ShowChange())
+	strs := []string{}
+	strs = append(strs, m.wsStyle(m.wsList.View()))
+	strs = append(strs, m.biasStyle(m.biasList.View()))
+	strs = append(strs, modelStyle.Render(m.net.ShowChange()))
+	templete := lipgloss.JoinHorizontal(lipgloss.Top, strs...)
+	if m.input.Focused() {
+		// templete = margin.Render(templete + "\n" + m.input.View())
+		return margin.Render(templete + "\n" + m.input.View())
+	}
+
+	return margin.Render(templete + "\n")
+	// return templete
 }
 
+func (m model) wsStyle(s string) string {
+	if m.focus == ws {
+		return focusStyle.Render(s)
+	} else if m.focus == bias {
+		return docStyle.Render(s)
+	} else {
+		return ""
+	}
+}
+
+func (m model) biasStyle(s string) string {
+	if m.focus == ws {
+		return docStyle.Render(s)
+	} else if m.focus == bias {
+		return focusStyle.Render(s)
+	} else {
+		return ""
+	}
+}
+
+// func (m model) margin(s string) string {
+// 	ms := lipgloss.NewStyle().MarginBottom(2)
+// }
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// var cmds []tea.Cmd
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		docStyle.Width(msg.Width / 4)
+		focusStyle.Width(msg.Width / 4)
+		// modelStyle.Height(msg.Height - modelStyle.GetVerticalFrameSize() - margin.GetVerticalMargins())
+		// vert := modelStyle.GetVerticalFrameSize() + margin.GetVerticalMargins()
+		vert := msg.Height - margin.GetVerticalFrameSize() - modelStyle.GetHeight()
+		modelStyle.Margin(common.GetMarginTop()-1+vert/2, 0, vert/2)
+		// modelStyle.Margin(3+vert/2, 0, vert/2)
+
+		// modelStyle.Width(msg.Width/2)
+		h, v := docStyle.GetFrameSize()
+		m.wsList.SetSize(msg.Width-h, msg.Height-v)
+		h, v = focusStyle.GetFrameSize()
+		m.biasList.SetSize(msg.Width-h, msg.Height-v)
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
+		if m.input.Focused() {
+			switch msg.String() {
+			case "ctrl+c":
+				m.input.SetValue("")
+				m.input.Blur()
+			case "enter":
+				var value float32
+				if ff, err := strconv.ParseFloat(m.input.Value(), 32); err == nil && m.input.Value() != "" {
+					value = float32(ff)
+					switch m.focus {
+					case ws:
+						m.net.WSChange(m.wsList.Index(), value)
+					case bias:
+						m.net.BiasChange(m.biasList.Index(), value)
+
+					}
+				}
+				m.input.SetValue("")
+				m.input.Blur()
+			}
+			m.input, cmd = m.input.Update(msg)
+			cmds = append(cmds, cmd)
+		} else {
+			switch m.focus {
+			case ws:
+				switch msg.String() {
+				case "ctrl+c", "q":
+					return m, tea.Quit
+				case "tab": //, "h", "j":
+					m.focus = bias
+				case "enter":
+					value := fmt.Sprint(m.net.WS[m.wsList.Index()])
+					m.input.SetValue(value)
+					m.input.Focus()
+				default:
+					m.wsList, cmd = m.wsList.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case bias:
+				switch msg.String() {
+				case "ctrl+c", "q":
+					return m, tea.Quit
+				case "tab": //, "h", "j":
+					m.focus = ws
+				case "enter":
+					value := fmt.Sprint(m.net.Bias[m.biasList.Index()])
+					m.input.SetValue(value)
+					m.input.Focus()
+				default:
+					m.biasList, cmd = m.biasList.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			}
+			// switch msg.String() {
+			// case "ctrl+c", "q":
+			// 	return m, tea.Quit
+			// case "tab": //, "h", "j":
+			// 	if m.focus == ws {
+			// 		m.focus = bias
+			// 	} else {
+			// 		m.focus = ws
+			// 	}
+			// case "enter":
+			// 	value := ""
+			// 	switch m.focus {
+			// 	case ws:
+			// 		value = fmt.Sprint(m.net.WS[m.wsList.Index()])
+			// 	case bias:
+			// 		value = fmt.Sprint(m.net.Bias[m.biasList.Index()])
+			// 	}
+			// 	m.input.SetValue(value)
+			// 	m.input.Focus()
+			// default:
+			// 	switch m.focus {
+			// 	case ws:
+			// 		m.wsList, cmd = m.wsList.Update(msg)
+			// 	case bias:
+			// 		m.biasList, cmd = m.biasList.Update(msg)
+			// 	}
+			// 	cmds = append(cmds, cmd)
+			// }
 		}
 	}
 
-	return m, nil
+	return m, tea.Batch(cmds...)
+}
+
+func (m model) ValidateInput(s string) error {
+	_, err := strconv.ParseFloat(s, 32)
+	return err
 }
 
 /*

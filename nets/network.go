@@ -52,6 +52,7 @@ func NewNetwork() *Network {
 func (net *Network) ShowChange() string {
 	var str strings.Builder
 	accuracy := 0
+	str.WriteByte('\n')
 	for i, w := range net.WS {
 		str.WriteString(fmt.Sprint(i, ": "))
 		for j, b := range net.Bias {
@@ -105,10 +106,14 @@ func (net *Network) calcTotal() {
 	}
 }
 
-func (net *Network) Change(i int, val float32) {
+func (net *Network) WSChange(i int, val float32) {
 	// weight.total -= weight.ws[i] + val
 	net.WS[i] = val
 	net.calcTotal()
+}
+
+func (net *Network) BiasChange(i int, val float32) {
+	net.Bias[i] = val
 }
 
 func (net *Network) Save() error {
