@@ -1,6 +1,8 @@
 package constants
 
 import (
+	"reflect"
+
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
@@ -12,6 +14,7 @@ type KeyMap struct {
 	Left  key.Binding
 	Right key.Binding
 	Enter key.Binding
+	Save  key.Binding
 	Back  key.Binding
 	Tab   key.Binding
 	Help  key.Binding
@@ -19,14 +22,26 @@ type KeyMap struct {
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Enter, k.Help, k.Quit}
+	return []key.Binding{k.Tab, k.Enter, k.Save, k.Help, k.Quit}
 }
 
 func (k KeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up}, {k.Down}, {k.Left}, {k.Right},
-		{k.Tab}, {k.Enter}, {k.Help}, {k.Quit},
+	tp := reflect.TypeOf(k)
+	vl := reflect.ValueOf(k)
+	bindings := make([][]key.Binding, tp.NumField())
+	for i := 0; i < tp.NumField(); i++ {
+		// bindings[i] = tp.Field(i).
+		if _, isOkay := vl.Field(i).Interface().(key.Binding); !isOkay {
+			continue
+		}
+		binding := vl.Field(i).Interface().(key.Binding)
+		bindings[i] = []key.Binding{binding}
 	}
+	// return [][]key.Binding{
+	// 	{k.Up}, {k.Down}, {k.Left}, {k.Right},
+	// 	{k.Tab}, {k.Enter}, {k.Save}, {k.Help}, {k.Quit},
+	// }
+	return bindings
 }
 
 func New() help.Model {
@@ -64,27 +79,31 @@ func New() help.Model {
 var Keys = KeyMap{
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),
-		key.WithHelp("↑/k", "move up"),
+		key.WithHelp("↑/k", "up"),
 	),
 	Down: key.NewBinding(
 		key.WithKeys("down", "j"),
-		key.WithHelp("↓/j", "move down"),
+		key.WithHelp("↓/j", "down"),
 	),
 	Left: key.NewBinding(
 		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "move left"),
+		key.WithHelp("←/h", "left"),
 	),
 	Right: key.NewBinding(
 		key.WithKeys("right", "l"),
-		key.WithHelp("→/l", "move right"),
+		key.WithHelp("→/l", "right"),
 	),
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "select"),
 	),
+	Save: key.NewBinding(
+		key.WithKeys("ctrl+s"),
+		key.WithHelp("Ctrl+s", "save Network"),
+	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
-		key.WithHelp("?", "toggle Help"),
+		key.WithHelp("?", "more Help"),
 	),
 	Back: key.NewBinding(
 		key.WithKeys("esc"),

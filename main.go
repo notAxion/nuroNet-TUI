@@ -219,6 +219,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.help.ShowAll = !m.help.ShowAll
 			case key.Matches(msg, m.keys.Quit):
 				return m, tea.Quit
+			case key.Matches(msg, m.keys.Save):
+				err := m.net.Save()
+				if err != nil {
+					m.net.LogError(err)
+				}
 			}
 			switch m.focus {
 			case ws:

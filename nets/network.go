@@ -3,6 +3,7 @@ package nets
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -21,32 +22,19 @@ type Network struct {
 }
 
 const (
-	tick    = "✅"
-	cross   = "❌"
-	logFile = "log/network.log"
+	tick     = "✅"
+	cross    = "❌"
+	saveFile = "log/network.log"
+	logFile  = "log/error.log"
 )
 
 func NewNetwork() *Network {
-	// this is the weights and bias after trying to balance
-	// the network by hand with the prev. technique
-	// weights: [-0.878692 9.761792 0.3720191 12.552786 -25.448135 -17.989666 -4.451405 -26.450663 25.954193 26.252296]
-	// total: -0.3254738
-	// bias: [-20.432455 -30.319965 -30.324236 -3.7374773]
-
-	net := Network{
-		WS:     make([]float32, 10),
-		Bias:   make([]float32, 4),
-		Output: [10][4]OutputNeurons{},
+	net, err := LoadLast()
+	if err != nil {
+		log.Fatalln(err)
 	}
-	// var seedw int64 = 1667659351435904
-	// var seedb int64 = 1667659351435945
-	// randFlArrn(net.WS, -30, 30, seedw)
-	// randFlArrn(net.Bias, -30, 30, seedb)
-	net.WS = []float32{-0.878692, 9.761792, 0.3720191, 12.552786, -25.448135, -17.989666, -4.451405, -26.450663, 25.954193, 26.252296}
-	net.Bias = []float32{-20.432455, -30.319965, -30.324236, -3.7374773}
-	net.calcTotal()
 
-	return &net
+	return net
 }
 
 func (net *Network) ShowChange() string {
@@ -70,16 +58,9 @@ func (net *Network) ShowChange() string {
 				Correct: correct,
 			}
 		}
-		// fmt.Println()
 		str.WriteByte('\n')
 	}
-	// fmt.Println()
 	str.WriteString(fmt.Sprintln("\naccuracy:", accuracy, "/ 40"))
-	// fmt.Println()
-	// fmt.Printf("Weights: %v\nWeights Total: %v\n", net.WS, net.Total)
-	// fmt.Printf("Bias: %v\n", net.Bias)
-	// fmt.Println()
-	// fmt.Printf("outs: %v\n", weights.Output)
 
 	return str.String()
 }
@@ -117,7 +98,7 @@ func (net *Network) BiasChange(i int, val float32) {
 }
 
 func (net *Network) Save() error {
-	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(saveFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -127,43 +108,65 @@ func (net *Network) Save() error {
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("%s \nLength: %d\n", log, len(log))
 	logger := log.New(file, "", log.LstdFlags)
 	logger.Println(string(data))
 
 	return nil
 }
 
-/*
+func (net *Network) LogError(tuiErr error) {
+	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer file.Close()
+
+	logger := log.New(file, "", log.LstdFlags)
+	logger.Println(tuiErr.Error())
+}
+
+func LoadLast() (*Network, error) {
 	file, err := os.Open("log/network.log")
 
-    if err != nil {
-        panic("Cannot open file")
-        os.Exit(1)
-    }
-    defer file.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-    line := ""
-    var cursor int64 = 0
-    stat, _ := file.Stat()
-    filesize := stat.Size()
-    for {
-        cursor -= 1
-        file.Seek(cursor, io.SeekEnd)
+	var cursor int64 = -900
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	filesize := stat.Size()
+	for {
+		cursor -= 1
+		file.Seek(cursor, io.SeekEnd)
 
-        char := make([]byte, 1)
-        file.Read(char)
+		char := make([]byte, 1)
+		file.Read(char)
 
-        if cursor != -1 && (char[0] == 10 || char[0] == 13) { // stop if we find a line
-            break
-        }
+		if cursor != -1 && (char[0] == 10 || char[0] == 13) { // stop if we find a line
+			break
+		}
 
-        line = fmt.Sprintf("%s%s", string(char), line) // there is more efficient way
+		if cursor == -filesize { // stop if we are at the begining
+			break
+		}
+	}
 
-        if cursor == -filesize { // stop if we are at the begining
-            break
-        }
-    }
+	line, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	// skipping the log data
+	line = line[19:]
 
-    return line
-*/
+	net := Network{}
+	err = json.Unmarshal(line, &net)
+	if err != nil {
+		return nil, err
+	}
+
+	return &net, err
+}
