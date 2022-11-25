@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"weights/constants"
-	"weights/input"
-	"weights/nets"
+
+	"github.com/notAxion/nuroNet-TUI/constants"
+	"github.com/notAxion/nuroNet-TUI/input"
+	"github.com/notAxion/nuroNet-TUI/nets"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
