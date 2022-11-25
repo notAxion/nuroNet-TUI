@@ -1,4 +1,4 @@
-module weights
+module github.com/notAxion/nuroNet-TUI
 
 go 1.19
 
